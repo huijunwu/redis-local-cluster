@@ -1,0 +1,169 @@
+services:
+  redis-node-1:
+    image: redis:8.0.2
+    container_name: redis-node-1
+    command: redis-server /opt/redis/redis.conf
+    ports:
+      - "10001:6379" # Mapped host port to internal container port
+    volumes:
+      - ./redis.conf:/opt/redis/redis.conf # Mount redis.conf from home directory
+      - redis-data-1:/data # Persistent data volume
+    networks:
+      - redis-cluster-network # Custom Docker network
+    healthcheck: # Basic health check for initial startup
+      test: ["CMD", "redis-cli", "-h", "localhost", "-p", "6379", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 50
+
+  redis-node-2:
+    image: redis:8.0.2
+    container_name: redis-node-2
+    command: redis-server /opt/redis/redis.conf
+    ports:
+      - "10002:6379"
+    volumes:
+      - ./redis.conf:/opt/redis/redis.conf
+      - redis-data-2:/data
+    networks:
+      - redis-cluster-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "localhost", "-p", "6379", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 50
+
+  redis-node-3:
+    image: redis:8.0.2
+    container_name: redis-node-3
+    command: redis-server /opt/redis/redis.conf
+    ports:
+      - "10003:6379"
+    volumes:
+      - ./redis.conf:/opt/redis/redis.conf
+      - redis-data-3:/data
+    networks:
+      - redis-cluster-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "localhost", "-p", "6379", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 50
+
+  redis-node-4:
+    image: redis:8.0.2
+    container_name: redis-node-4
+    command: redis-server /opt/redis/redis.conf
+    ports:
+      - "10004:6379"
+    volumes:
+      - ./redis.conf:/opt/redis/redis.conf
+      - redis-data-4:/data
+    networks:
+      - redis-cluster-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "localhost", "-p", "6379", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 50
+
+  redis-node-5:
+    image: redis:8.0.2
+    container_name: redis-node-5
+    command: redis-server /opt/redis/redis.conf
+    ports:
+      - "10005:6379"
+    volumes:
+      - ./redis.conf:/opt/redis/redis.conf
+      - redis-data-5:/data
+    networks:
+      - redis-cluster-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "localhost", "-p", "6379", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 50
+
+  redis-node-6:
+    image: redis:8.0.2
+    container_name: redis-node-6
+    command: redis-server /opt/redis/redis.conf
+    ports:
+      - "10006:6379"
+    volumes:
+      - ./redis.conf:/opt/redis/redis.conf
+      - redis-data-6:/data
+    networks:
+      - redis-cluster-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "localhost", "-p", "6379", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 50
+
+  # Service to initialize the Redis Cluster
+  redis-cluster-init:
+    image: redis:8.0.2
+    container_name: redis-cluster-init
+    depends_on:
+      redis-node-1:
+        condition: service_healthy
+      redis-node-2:
+        condition: service_healthy
+      redis-node-3:
+        condition: service_healthy
+      redis-node-4:
+        condition: service_healthy
+      redis-node-5:
+        condition: service_healthy
+      redis-node-6:
+        condition: service_healthy
+    networks:
+      - redis-cluster-network
+    # Use internal container names and ports for cluster creation
+    command: >
+      bash -c "
+        echo 'All Redis nodes are reporting healthy. Giving a small extra pause for network stability...' &&
+        sleep 10 && # Increased sleep for more robustness if needed
+        echo 'Attempting to create Redis Cluster...' &&
+        redis-cli --cluster create redis-node-1:6379 redis-node-2:6379 redis-node-3:6379 redis-node-4:6379 redis-node-5:6379 redis-node-6:6379 --cluster-replicas 1 --cluster-yes &&
+        echo 'Redis Cluster creation command sent. Verifying cluster state...' &&
+        sleep 5 && # Give time for cluster state to propagate
+        redis-cli -c -h redis-node-1 -p 6379 cluster info | grep 'cluster_state'
+      "
+    restart: "no" # This service should not restart if it fails or completes
+    # This service is for initialization only and will exit after creating the cluster
+    # You might want to remove it after successful creation if running long-term
+
+  # Redis Insight Web UI
+  redis-insight:
+    image: redislabs/redisinsight:2.70.0
+    container_name: redis-insight
+    ports:
+      - "8001:5540" # Access Redis Insight on host port 8001
+    volumes:
+      - redisinsight-data:/db # Persistence for Redis Insight's own data
+    networks:
+      - redis-cluster-network
+    depends_on:
+      redis-cluster-init: # Ensure cluster is created before Insight tries to connect
+        condition: service_completed_successfully # This condition ensures init finishes
+    # Restart policy can be useful for development to always have Insight available
+    restart: unless-stopped
+    # !!! ADD THIS COMMAND LINE !!!
+    # command: ["bash", "-x", "/usr/bin/docker-entrypoint.sh"]
+    # Note: The default entrypoint is /usr/bin/docker-entrypoint.sh
+    # If this doesn't work, we might need to find the actual entrypoint script used by the image.
+    
+networks:
+  redis-cluster-network:
+    driver: bridge
+
+volumes:
+  redis-data-1:
+  redis-data-2:
+  redis-data-3:
+  redis-data-4:
+  redis-data-5:
+  redis-data-6:
+  redisinsight-data:
